@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/InkProject/blackfriday"
+	"gopkg.in/russross/blackfriday.v2"
 	"gopkg.in/yaml.v2"
 )
 
