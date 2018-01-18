@@ -2,11 +2,11 @@ package main
 
 import (
 	"html/template"
+	"io"
 	"io/ioutil"
 	"path/filepath"
 	"strings"
 	"time"
-
 	"gopkg.in/russross/blackfriday.v2"
 	"gopkg.in/yaml.v2"
 )
@@ -33,7 +33,7 @@ type AuthorConfig struct {
 }
 
 type BuildConfig struct {
-	Output	string
+	Output  string
 	Port    string
 	Watch   bool
 	Copy    []string
@@ -59,6 +59,7 @@ type ArticleConfig struct {
 	Cover      string
 	Draft      bool
 	Preview    template.HTML
+	Toc        bool
 	Top        bool
 	Type       string
 	Hide       bool
@@ -92,9 +93,31 @@ const (
 	MORE_SPLIT   = "<!--more-->"
 )
 
+// for toc
+type inkRenderer struct {
+	defaultR *blackfriday.HTMLRenderer
+}
+
+func (r *inkRenderer) RenderHeader(w io.Writer, ast *blackfriday.Node) {
+	r.defaultR.RenderHeader(w, ast)
+}
+func (r *inkRenderer) RenderFooter(w io.Writer, ast *blackfriday.Node) {
+	r.defaultR.RenderFooter(w, ast)
+}
+func (r *inkRenderer) RenderNode(w io.Writer, node *blackfriday.Node, entering bool) blackfriday.WalkStatus {
+	return r.defaultR.RenderNode(w, node, entering)
+}
+
+func ParseMarkdownWithToc(markdown string) template.HTML {
+	defaultR := blackfriday.NewHTMLRenderer(blackfriday.HTMLRendererParameters{Flags: blackfriday.TOC})
+	r := inkRenderer{defaultR: defaultR}
+	html := blackfriday.Run([]byte(markdown), blackfriday.WithRenderer(&r))
+	return template.HTML(html)
+}
+
 func ParseMarkdown(markdown string) template.HTML {
 	// html.UnescapeString
-	return template.HTML(blackfriday.MarkdownCommon([]byte(markdown)))
+	return template.HTML(blackfriday.Run([]byte(markdown)))
 }
 
 func ReplaceRootFlag(content string) string {
@@ -122,7 +145,7 @@ func ParseGlobalConfig(configPath string, develop bool) *GlobalConfig {
 	if config.Site.Url != "" && strings.HasSuffix(config.Site.Url, "/") {
 		config.Site.Url = strings.TrimSuffix(config.Site.Url, "/")
 	}
-	if (config.Build.Output == "") {
+	if config.Build.Output == "" {
 		config.Build.Output = "public"
 	}
 	// Parse Theme Config
@@ -207,7 +230,11 @@ func ParseArticle(markdownPath string) *Article {
 	article.Preview = config.Preview
 	article.Config = config.Config
 	article.Markdown = content
-	article.Content = ParseMarkdown(content)
+	if config.Toc {
+		article.Content = ParseMarkdownWithToc(content)
+	} else {
+		article.Content = ParseMarkdown(content)
+	}
 	if config.Date != "" {
 		article.Time = ParseDate(config.Date)
 		article.Date = article.Time.Unix()
@@ -260,6 +287,9 @@ func ParseArticle(markdownPath string) *Article {
 				"{year}":     article.Time.Format("2006"),
 				"{month}":    article.Time.Format("01"),
 				"{day}":      article.Time.Format("02"),
+				"{hour}":     article.Time.Format("15"),
+				"{minute}":   article.Time.Format("04"),
+				"{second}":   article.Time.Format("05"),
 				"{category}": article.Category,
 				"{title}":    fileName,
 			}
